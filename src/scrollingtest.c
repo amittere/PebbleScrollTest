@@ -14,6 +14,8 @@ typedef enum TrialType {
 } TrialType;
 
 // Trial indices
+//static int known_trials[NUM_TRIALS] = { 10 };
+//static int unknown_trials[NUM_TRIALS] = { 10 };
 static int known_trials[NUM_TRIALS] = { 10, 51, 24, 3, 36, 49, 75, 98, 66, 87 };
 static int unknown_trials[NUM_TRIALS] = { 36, 98, 10, 3, 51, 49, 87, 66, 75, 24 };
 static int practice_known = 28;
@@ -183,6 +185,17 @@ void menu_select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *da
       if (trial_num == NUM_TRIALS - 1) {
         current_type = RESULTS;
         trial_num = 0;
+        
+        // Log the results
+        char str[256];
+        int cx = 0;
+        for (int i = 0; i < NUM_TRIALS * 2; i++) {
+          cx += snprintf(str + cx, 256 - cx, "%llu,", time_results[i]);
+        }
+        for (int i = 0; i < NUM_TRIALS * 2; i++) {
+          cx += snprintf(str + cx, 256 - cx, "%d,", accuracy_results[i]);
+        }
+        APP_LOG(APP_LOG_LEVEL_DEBUG, str);
       }
       else {
         trial_num++;
