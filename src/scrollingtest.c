@@ -189,11 +189,30 @@ void menu_select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *da
         // Log the results
         char str[256];
         int cx = 0;
-        for (int i = 0; i < NUM_TRIALS * 2; i++) {
+        int i;
+        for (i = 0; i < NUM_TRIALS; i++) {
           cx += snprintf(str + cx, 256 - cx, "%llu,", time_results[i]);
         }
-        for (int i = 0; i < NUM_TRIALS * 2; i++) {
-          cx += snprintf(str + cx, 256 - cx, "%d,", accuracy_results[i]);
+        APP_LOG(APP_LOG_LEVEL_DEBUG, str);
+        
+        cx = 0;
+        memset(str, 0, 256);
+        for (i = NUM_TRIALS; i < NUM_TRIALS * 2; i++) {
+          cx += snprintf(str + cx, 256 - cx, "%llu,", time_results[i]);
+        }
+        APP_LOG(APP_LOG_LEVEL_DEBUG, str);
+        
+        cx = 0;
+        memset(str, 0, 256);
+        for (i = 0; i < NUM_TRIALS; i++) {
+          cx += snprintf(str + cx, 512 - cx, "%d,", accuracy_results[i]);
+        }
+        APP_LOG(APP_LOG_LEVEL_DEBUG, str);
+        
+        cx = 0;
+        memset(str, 0, 256);
+        for (i = NUM_TRIALS; i < NUM_TRIALS * 2; i++) {
+          cx += snprintf(str + cx, 512 - cx, "%d,", accuracy_results[i]);
         }
         APP_LOG(APP_LOG_LEVEL_DEBUG, str);
       }

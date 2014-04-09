@@ -1,8 +1,14 @@
 {
     "versionLabel": "1.0",
     "uuid": "227e196d-491c-422a-a807-ea0cc7844a21",
+    "appKeys": {
+        "dummy": 0
+    },
     "longName": "ScrollingTest",
     "versionCode": 1,
+    "capabilities": [
+        ""
+    ],
     "shortName": "ScrollingTest",
     "companyName": "andrew.mittereder@gmail.com",
     "watchapp": {
@@ -10,8 +16,5 @@
     },
     "resources": {
         "media": []
-    },
-    "appKeys": {
-      "dummy": 0
     }
 }
