@@ -1,50 +1,127 @@
-#include <pebble.h>
+#include "scrollingtest.h"
 
-#define NUM_MENU_SECTIONS 1
-#define NUM_MENU_ITEMS 101
-#define CELL_HEIGHT 32
-#define TITLE_HEIGHT 64
-
-#define NUM_TRIALS 10
-
-// Enum specifying the current type of trial.
-// Order of trials is the order specified in the enum.
-typedef enum TrialType {
-  PRACTICE_KNOWN, PRACTICE_UNKNOWN, TRIAL_KNOWN, TRIAL_UNKNOWN, RESULTS
-} TrialType;
-
-// Trial indices
-//static int known_trials[NUM_TRIALS] = { 10 };
-//static int unknown_trials[NUM_TRIALS] = { 10 };
-static int known_trials[NUM_TRIALS] = { 10, 51, 24, 3, 36, 49, 75, 98, 66, 87 };
-static int unknown_trials[NUM_TRIALS] = { 36, 98, 10, 3, 51, 49, 87, 66, 75, 24 };
-static int practice_known = 28;
-static int practice_unknown = 51;
-
-static TrialType current_type = PRACTICE_KNOWN;
-static int trial_num = 0;
-static time_t time_sec;
-static uint16_t time_msec;
-static uint64_t time_results[NUM_TRIALS * 2];
-static int accuracy_results[NUM_TRIALS * 2];
-
-static Window *window;
-
-// This is a menu layer
-// You have more control than with a simple menu layer
-static MenuLayer *menu_layer;
-
-void start_timer() {
-  time_ms(&time_sec, &time_msec);
+void start_timer(time_t *sec, uint16_t *msec) {
+  time_ms(sec, msec);
 }
 
-uint64_t stop_timer() {
+uint64_t stop_timer(time_t *sec, uint16_t *msec) {
   time_t elapsed_sec;
   uint16_t elapsed_msec;
   time_ms(&elapsed_sec, &elapsed_msec);
-  uint64_t time1 = time_sec * 1000 + time_msec;
+  uint64_t time1 = *sec * 1000 + *msec;
   uint64_t time2 = elapsed_sec * 1000 + elapsed_msec;
   return time2 - time1;
+}
+
+void select_item() {
+  uint64_t elapsed = stop_timer(&select_timeout_sec, &select_timeout_msec);
+  if (elapsed > SELECT_TIME_THR) {
+    MenuIndex idx = menu_layer_get_selected_index(menu_layer);
+    menu_select_callback(menu_layer, &idx, NULL);
+  }
+}
+
+void accel_data_handler(AccelData *data, uint32_t num_samples) {
+  if (!scrollEnabled) return;
+  
+  int avgX = 0, avgY = 0, avgZ = 0;
+  uint64_t latest_time = 0;
+  AccelData d = data[0];
+  if (d.did_vibrate) return;
+  avgX = d.x;
+  avgY = d.y;
+  avgZ = d.z;
+  latest_time = d.timestamp;
+  
+  if (!baselineSet) {
+    baselineX = avgX;
+    baselineY = avgY;
+    baselineZ = avgZ;
+    baselineSet = true;
+    return;
+  }
+  
+  // Selection
+  if (avgX - baselineX > SELECT_THR ||
+      avgX - baselineX < -SELECT_THR) {
+    select_item();
+  }
+  // Fast downward scroll
+  else if (avgY - baselineY > FAST_SCROLL_THR) {
+    if (current_speed != FAST_SCROLL_SPEED &&
+        current_speed != XTRA_FAST_SCROLL_SPEED) {
+      current_speed = FAST_SCROLL_SPEED;
+      fast_scroll_start = latest_time;
+    }
+    
+    if (avgY - baselineY > XTRA_FAST_SCROLL_THR &&
+        latest_time - fast_scroll_start >= XTRA_FAST_TIME_THR) {
+      current_speed = XTRA_FAST_SCROLL_SPEED;
+    }
+    
+    count++;
+    if (count >= current_speed) {
+      count -= current_speed;
+      menu_layer_set_selected_next(menu_layer, false, MenuRowAlignCenter, true);
+    }
+  }
+  // Slow downward scroll
+  else if (avgY - baselineY > SLOW_SCROLL_THR) {
+    current_speed = SLOW_SCROLL_SPEED;
+    fast_scroll_start = 0;
+    count++;
+    if (count >= current_speed) {
+      count -= current_speed;
+      menu_layer_set_selected_next(menu_layer, false, MenuRowAlignCenter, true);
+    }
+  }
+  // Fast upward scroll
+  else if (avgY - baselineY < -FAST_SCROLL_THR) {
+    if (current_speed != FAST_SCROLL_SPEED &&
+        current_speed != XTRA_FAST_SCROLL_SPEED) {
+      current_speed = FAST_SCROLL_SPEED;
+      fast_scroll_start = latest_time;
+    }
+    
+    if (avgY - baselineY < -XTRA_FAST_SCROLL_THR &&
+        latest_time - fast_scroll_start >= XTRA_FAST_TIME_THR) {
+      current_speed = XTRA_FAST_SCROLL_SPEED;
+    }
+    
+    count++;
+    if (count >= current_speed) {
+      count -= current_speed;
+      menu_layer_set_selected_next(menu_layer, true, MenuRowAlignCenter, true);
+    }
+  }
+  // Slow upward scroll
+  else if (avgY - baselineY < -SLOW_SCROLL_THR) {
+    current_speed = SLOW_SCROLL_SPEED;
+    fast_scroll_start = 0;
+    count++;
+    if (count >= current_speed) {
+      count -= current_speed;
+      menu_layer_set_selected_next(menu_layer, true, MenuRowAlignCenter, true);        
+    }
+  }
+  // No scroll
+  else {
+    current_speed = 0;
+    count = 0;
+    fast_scroll_start = 0;
+  }
+}
+
+void enable_tilt_scroll() {
+  // Subscribe to the accelerometer service
+  scrollEnabled = true;
+  accel_data_service_subscribe(1, &accel_data_handler);
+  accel_service_set_sampling_rate(ACCEL_SAMPLING_100HZ);
+}
+
+void disable_tilt_scroll() {
+  accel_data_service_unsubscribe();
+  scrollEnabled = false;
 }
 
 // A callback is used to specify the amount of sections of menu items
@@ -56,16 +133,20 @@ static uint16_t menu_get_num_sections_callback(MenuLayer *menu_layer, void *data
 // Each section has a number of items;  we use a callback to specify this
 // You can also dynamically add and remove items using this
 static uint16_t menu_get_num_rows_callback(MenuLayer *menu_layer, uint16_t section_index, void *data) {
-  if (current_type == RESULTS) {
-    return NUM_TRIALS * 4;
-  }
-  else {
-    return NUM_MENU_ITEMS;
+  switch (current_type) {
+    case SETUP:
+      return 2;
+    case RESULTS:
+      return NUM_TRIALS * 4;
+    default:
+      return NUM_MENU_ITEMS;
   }
 }
 
-static int16_t menu_get_cell_height_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *data) {\
-  if (current_type == RESULTS || cell_index->row == 0) {
+static int16_t menu_get_cell_height_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *data) {
+  if (current_type == SETUP || 
+      current_type == RESULTS || 
+      cell_index->row == 0) {
     return TITLE_HEIGHT;
   }
   return CELL_HEIGHT;
@@ -81,6 +162,9 @@ static int16_t menu_get_header_height_callback(MenuLayer *menu_layer, uint16_t s
 static void menu_draw_header_callback(GContext* ctx, const Layer *cell_layer, uint16_t section_index, void *data) {
   char str[24];
   switch (current_type) {
+    case SETUP:
+      snprintf(str, 24, "Setup");
+      break;
     case PRACTICE_KNOWN:
     case PRACTICE_UNKNOWN:
       snprintf(str, 24, "Practice");
@@ -102,7 +186,15 @@ static void menu_draw_header_callback(GContext* ctx, const Layer *cell_layer, ui
 // This is the menu item draw callback where you specify what each item should look like
 static void menu_draw_row_callback(GContext* ctx, const Layer *cell_layer, MenuIndex *cell_index, void *data) {
   char str[64];
-  if (current_type == RESULTS) {
+  if (current_type == SETUP) {
+    if (cell_index->row == 0) {
+      snprintf(str, 64, "ENABLE Tilt Scroll");
+    }
+    else if (cell_index->row == 1) {
+      snprintf(str, 64, "DISABLE Tilt Scroll");
+    }
+  }
+  else if (current_type == RESULTS) {
     if (cell_index->row < NUM_TRIALS * 2) {
       snprintf(str, 64, "Trial %d Time: %llu ms", cell_index->row, time_results[cell_index->row]);
     }
@@ -153,6 +245,12 @@ void menu_select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *da
   // Handle transitions to different trial types
   uint64_t time;
   switch (current_type) {
+    case SETUP:
+      if (cell_index->row == 0) {
+        enable_tilt_scroll();
+      }
+      current_type = PRACTICE_KNOWN;
+      break;
     case PRACTICE_KNOWN:
       current_type = PRACTICE_UNKNOWN;
       break;
@@ -162,7 +260,7 @@ void menu_select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *da
       break;
     case TRIAL_KNOWN:
       // Finish the trial
-      time = stop_timer();
+      time = stop_timer(&time_sec, &time_msec);
       time_results[trial_num] = time;
       accuracy_results[trial_num] = cell_index->row - known_trials[trial_num];
       
@@ -177,7 +275,7 @@ void menu_select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *da
       break;
     case TRIAL_UNKNOWN:
       // Finish the trial
-      time = stop_timer();
+      time = stop_timer(&time_sec, &time_msec);
       time_results[trial_num + NUM_TRIALS] = time;
       accuracy_results[trial_num + NUM_TRIALS] = cell_index->row - unknown_trials[trial_num];
       
@@ -224,9 +322,12 @@ void menu_select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *da
       return;
   }
   
+  // Start tilt select timer
+  start_timer(&select_timeout_sec, &select_timeout_msec);
+  
   // If we're starting a new timed trial, start the timer
   if (current_type == TRIAL_KNOWN || current_type == TRIAL_UNKNOWN) {
-    start_timer();
+    start_timer(&time_sec, &time_msec);
   }
   
   MenuIndex idx;
@@ -280,6 +381,7 @@ int main(void) {
   window_stack_push(window, true /* Animated */);
 
   app_event_loop();
-
+  
+  if (scrollEnabled) disable_tilt_scroll();
   window_destroy(window);
 }
